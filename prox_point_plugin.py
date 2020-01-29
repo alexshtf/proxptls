@@ -12,7 +12,7 @@ class ProxPointPlugin(ExperimentPlugin):
         self.model = model
         self.lr = lr
 
-    def sample_step(self, x, y, pred):
+    def process_sample(self, x, y, pred):
         with torch.no_grad():
             numerator = self.lr * (pred - y)
             denominator = (1 + self.lr * (1 + torch.dot(x, x)))
@@ -21,6 +21,6 @@ class ProxPointPlugin(ExperimentPlugin):
             self.model.beta -= coeff * x
             self.model.alpha -= coeff
 
-    def epoch_step(self):
+    def end_epoch(self):
         pass
 

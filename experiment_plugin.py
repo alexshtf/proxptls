@@ -7,9 +7,9 @@ class ExperimentPlugin(ABC):
         pass
 
     @abstractmethod
-    def sample_step(self, x, y, pred):
+    def process_sample(self, x, y, pred):
         pass
 
     @abstractmethod
-    def epoch_step(self):
+    def end_epoch(self):
         pass

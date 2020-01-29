@@ -6,6 +6,7 @@ import pandas as pd
 import seaborn as sns
 import torch
 import torch.utils.data as td
+import torch.optim as opt
 from sklearn.preprocessing import minmax_scale
 from torch.optim.lr_scheduler import LambdaLR
 from tqdm import tqdm
@@ -28,14 +29,15 @@ class LinReg(torch.nn.Module):
 
 
 # solves the least-squares problem using a direct method
-def compute_opt_loss(X, b):
-    X_pad = np.pad(X, pad_width=[(0, 0), (0, 1)], constant_values=1)
-    opt_w, opt_loss, residual, svd = np.linalg.lstsq(X_pad, b)
-    opt_loss /= X.shape[0]
+def compute_opt_loss(P, b):
+    # pad with a column of ones - the coefficients of the alpha parameter
+    Q = np.pad(P, pad_width=[(0, 0), (0, 1)], constant_values=1)
+    opt_w, opt_loss, residual, svd = np.linalg.lstsq(Q, b)
+    opt_loss /= P.shape[0]
     return opt_loss
 
 
-def run_experiment(plugin, train_set, epochs, attempts, lrs, opt_loss):
+def run_experiment(name, plugin, train_set, epochs, attempts, lrs, opt_loss):
     losses = pd.DataFrame(columns=['lr', 'epoch', 'attempt', 'loss'])
 
     for lr in lrs:
@@ -44,7 +46,7 @@ def run_experiment(plugin, train_set, epochs, attempts, lrs, opt_loss):
 
             plugin.construct(model, lr)
 
-            with tqdm(epochs, desc=f'lr = {lr}, attempt = {attempt}', unit='epoch', ncols=100) as tqdm_epochs:
+            with tqdm(epochs, desc=f'plugin = {name}, lr = {lr}, attempt = {attempt}', unit='epochs', ncols=100) as tqdm_epochs:
                 for epoch in tqdm_epochs:
                     train_loss = 0
                     for x, y in td.DataLoader(train_set, shuffle=True, batch_size=1):
@@ -57,7 +59,7 @@ def run_experiment(plugin, train_set, epochs, attempts, lrs, opt_loss):
                         train_loss += loss.item()
                         loss.backward()
 
-                        plugin.sample_step(xx, y, pred)
+                        plugin.process_sample(xx, y, pred)
 
                     train_loss /= len(train_set)
                     losses = losses.append(pd.DataFrame.from_dict(
@@ -66,7 +68,7 @@ def run_experiment(plugin, train_set, epochs, attempts, lrs, opt_loss):
                          'lr': [lr],
                          'attempt': attempt}), sort=True)
 
-                    plugin.epoch_step()
+                    plugin.end_epoch()
 
     best_loss_df = losses[['lr', 'attempt', 'loss']].groupby(['lr', 'attempt'], as_index=False).min()
     return best_loss_df[['lr', 'loss']]
@@ -86,16 +88,18 @@ attempts = range(0, 20)
 lrs = np.geomspace(0.001, 100, num=60)
 experiments = [
     ('Proximal point', ProxPointPlugin()),
-    ('Adagrad', OptimizerPlugin(make_optimizer=lambda model, lr: torch.optim.Adagrad(model.parameters()),
-                                make_scheduler=lambda optimizer, lr: LambdaLR(optimizer, lr_lambda=[lambda i: lr]))),
-    ('Adam', OptimizerPlugin(make_optimizer=lambda model, lr: torch.optim.Adam(model.parameters()),
-                             make_scheduler=lambda optimizer, lr: LambdaLR(optimizer, lr_lambda=[lambda i: lr]))),
-    ('SGD', OptimizerPlugin(make_optimizer=lambda model, lr: torch.optim.SGD(model.parameters(), lr=lr),
+    ('Adagrad', OptimizerPlugin(make_optimizer=lambda model, lr: opt.Adagrad(model.parameters()),
+                                make_scheduler=lambda optimizer, lr: LambdaLR(optimizer,
+                                                                              lr_lambda=[lambda i: lr]))),
+    ('Adam', OptimizerPlugin(make_optimizer=lambda model, lr: opt.Adam(model.parameters()),
+                             make_scheduler=lambda optimizer, lr: LambdaLR(optimizer,
+                                                                           lr_lambda=[lambda i: lr]))),
+    ('SGD', OptimizerPlugin(make_optimizer=lambda model, lr: opt.SGD(model.parameters(), lr=lr),
                             make_scheduler=lambda optimizer, lr: LambdaLR(optimizer,
                                                                           lr_lambda=[lambda i: lr / math.sqrt(1 + i)])))
 ]
 
-experiment_results = [run_experiment(plugin, train_set, epochs, attempts, lrs, optimal_loss).assign(name=name)
+experiment_results = [run_experiment(name, plugin, train_set, epochs, attempts, lrs, optimal_loss).assign(name=name)
                       for name, plugin in experiments]
 result_df = pd.concat(experiment_results)
 result_df = result_df[result_df['loss'] < 10000]

@@ -12,8 +12,8 @@ class OptimizerPlugin(ExperimentPlugin):
         self.optimizer = self.make_optimizer(model, lr)
         self.scheduler = self.make_scheduler(self.optimizer, lr)
 
-    def sample_step(self, x, y, pred):
+    def process_sample(self, x, y, pred):
         self.optimizer.step()
 
-    def epoch_step(self):
+    def end_epoch(self):
         self.scheduler.step()
