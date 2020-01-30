@@ -40,14 +40,15 @@ def compute_opt_loss(P, b):
 def run_experiment(name, plugin, train_set, epochs, attempts, lrs, opt_loss):
     losses = pd.DataFrame(columns=['lr', 'epoch', 'attempt', 'loss'])
 
-    for lr in lrs:
-        for attempt in attempts:
-            model = LinReg()
+    total_epochs = len(lrs) * len(attempts) * len(epochs)
+    with tqdm(total=total_epochs, unit='epochs', ncols=140) as pbar:
+        for lr in lrs:
+            for attempt in attempts:
+                pbar.set_description(desc=f'plugin = {name}, lr = {lr}, attempt = {attempt}')
 
-            plugin.construct(model, lr)
-
-            with tqdm(epochs, desc=f'plugin = {name}, lr = {lr}, attempt = {attempt}', unit='epochs', ncols=100) as tqdm_epochs:
-                for epoch in tqdm_epochs:
+                model = LinReg()
+                plugin.construct(model, lr)
+                for epoch in epochs:
                     train_loss = 0
                     for x, y in td.DataLoader(train_set, shuffle=True, batch_size=1):
                         xx = x.squeeze(0)
@@ -69,6 +70,7 @@ def run_experiment(name, plugin, train_set, epochs, attempts, lrs, opt_loss):
                          'attempt': attempt}), sort=True)
 
                     plugin.end_epoch()
+                    pbar.update()
 
     best_loss_df = losses[['lr', 'attempt', 'loss']].groupby(['lr', 'attempt'], as_index=False).min()
     return best_loss_df[['lr', 'loss']]
